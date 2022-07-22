@@ -27,7 +27,7 @@ func TestWorkerPoolRun(t *testing.T) {
 }
 func TestWorkerPoolPub(t *testing.T) {
 	wp := New(3,
-		WithWorker(func(ctx context.Context, i int) (int, error) {
+		WithTemplateTask(func(ctx context.Context, i int) (int, error) {
 			return i + 1, nil
 		}),
 	)

@@ -2,6 +2,20 @@
 
 `YAWP` is implementation worker pool with generic.
 
+Design for not think about:
+- result type
+- error handling
+- goroutine leaks
+- panic handling
+
+## Questions
+
+### Pub, Run return Result type. Is it promise?
+
+Yep, it's promise. Method `Get` lock until result is not ready.
+
+If you need get result only than it's ready use `RedirectOutput` option.
+
 ## Hot to install
 
 ```bash

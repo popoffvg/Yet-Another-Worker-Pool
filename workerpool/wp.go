@@ -16,12 +16,14 @@ type Worker[I, O any] func(context.Context, I) (O, error)
 
 type Option[I, O any] func(*Pool[I, O])
 
-func WithWorker[I, O any](w Worker[I, O]) Option[I, O] {
+// Set task template for Run method.
+func WithTemplateTask[I, O any](w Worker[I, O]) Option[I, O] {
 	return func(p *Pool[I, O]) {
 		p.workerTemplate = w
 	}
 }
 
+// WithCtx able stop all workers with external context.
 func WithCtx[I, O any](ctx context.Context) Option[I, O] {
 	return func(p *Pool[I, O]) {
 		ctx, cancel := context.WithCancel(ctx)
@@ -30,6 +32,10 @@ func WithCtx[I, O any](ctx context.Context) Option[I, O] {
 	}
 }
 
+// If use:
+// - methods Run and Pub return empty result
+// - all results redirected to output channel
+// see Stream method
 func RedirectOutput[I, O any]() Option[I, O] {
 	return func(p *Pool[I, O]) {
 		p.out = make(chan Result[O], 1)
@@ -67,6 +73,10 @@ func New[I, O any](workers int, opts ...Option[I, O]) *Pool[I, O] {
 	return p
 }
 
+// Execute task from template. Template must be set with WithTemplateTask.
+// If template task not set than panic.
+// Return Result type value that contains methods for get task result.
+// If RedirectOutput is used than return empty result.
 func (p *Pool[I, O]) Pub(input I) Result[O] {
 	if p.workerTemplate == nil {
 		panic("not set worker template")
@@ -80,6 +90,9 @@ func (p *Pool[I, O]) Pub(input I) Result[O] {
 	return p.Run(task)
 }
 
+// Execute arbitrary task on worker.
+// Return Result type value that contains methods for get task result.
+// If RedirectOutput is used than return empty result.
 func (p *Pool[I, O]) Run(t Task[O]) Result[O] {
 	work := newWork[I](t)
 	p.works <- *work
@@ -89,6 +102,7 @@ func (p *Pool[I, O]) Run(t Task[O]) Result[O] {
 	return work.r
 }
 
+// Stop all workers.
 func (p *Pool[I, O]) Close() error {
 	select {
 	case <-p.ctx.Done():
@@ -102,6 +116,9 @@ func (p *Pool[I, O]) Close() error {
 	return nil
 }
 
+// Return chanel with result values.
+// Use only with option RedirectOutput.
+// If RedirectOutput not set than return closed channel.
 func (p *Pool[I, O]) Stream() <-chan Result[O] {
 	if p.out == nil {
 		mock := make(chan Result[O])

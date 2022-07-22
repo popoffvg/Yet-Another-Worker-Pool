@@ -1,5 +1,7 @@
 package workerpool
 
+// Result represent calculating value. 
+// It contains mathods for get value and errors, readiness check.
 type Result[O any] struct {
 	r        chan O
 	err      chan error
@@ -7,6 +9,8 @@ type Result[O any] struct {
 	notEmpty bool
 }
 
+// If result is ready than return closed channel.
+// Else return empty channel.
 func (r *Result[O]) Done() <-chan struct{} {
 	if r.isEmpty() {
 		close(r.done)
@@ -15,6 +19,7 @@ func (r *Result[O]) Done() <-chan struct{} {
 	return r.done
 }
 
+// Try to get value. If result is not ready than blocked.
 func (r *Result[O]) Get() (O, error) {
 	if r.isEmpty() {
 		return getZero[O](), ErrRedirectOut
