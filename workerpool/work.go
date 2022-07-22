@@ -14,6 +14,8 @@ func newWork[I, O any](t Task[O]) *work[I, O] {
 	result := Result[O]{
 		r:   make(chan O, 1),
 		err: make(chan error, 1),
+		done: make(chan struct{}),
+		notEmpty: true,
 	}
 
 	return &work[I, O]{
@@ -29,19 +31,18 @@ func (p *Pool[I, O]) Do(wg *sync.WaitGroup) {
 			wg.Done()
 			return
 		case w := <-p.works:
-			out, err := p.DoWithDefer(w.t)
-			if err != nil {
-				close(w.r.r)
-				w.r.err <- err
-				continue
+			out, err := p.doWithDefer(w.t)
+			w.r.set(out, err)
+			if p.out != nil {
+				p.out <- w.r
 			}
-			close(w.r.err)
-			w.r.r <- out
 		}
 	}
 }
 
-func (p *Pool[I, O]) DoWithDefer(t Task[O]) (_ O, err error) {
+
+
+func (p *Pool[I, O]) doWithDefer(t Task[O]) (_ O, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic in task: %v", r)

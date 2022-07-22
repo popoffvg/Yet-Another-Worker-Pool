@@ -2,21 +2,51 @@ package workerpool
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
 
+var (
+	ErrRedirectOut = errors.New("wrong source of result")
+)
+
 type Result[O any] struct {
-	r   chan O
-	err chan error
+	r        chan O
+	err      chan error
+	done     chan struct{}
+	notEmpty bool
+}
+
+func (r *Result[O]) Done() <-chan struct{} {
+	if r.isEmpty() {
+		close(r.done)
+	}
+
+	return r.done
 }
 
 func (r *Result[O]) Get() (O, error) {
+	if r.isEmpty() {
+		return getZero[O](), ErrRedirectOut
+	}
+
 	err := <-r.err
 	if err != nil {
 		return getZero[O](), err
 	}
 
 	return <-r.r, nil
+}
+
+func (r *Result[O]) set(out O, err error) {
+	r.notEmpty = true
+	close(r.done)
+	r.err <- err
+	r.r <- out
+}
+
+func (r *Result[O]) isEmpty() bool {
+	return !r.notEmpty
 }
 
 type Task[O any] func(context.Context) (O, error)
@@ -31,7 +61,7 @@ func WithWorker[I, O any](w Worker[I, O]) Option[I, O] {
 	}
 }
 
-func WithCtx[I,O any](ctx context.Context) Option[I,O] {
+func WithCtx[I, O any](ctx context.Context) Option[I, O] {
 	return func(p *Pool[I, O]) {
 		ctx, cancel := context.WithCancel(ctx)
 		p.cancel = cancel
@@ -39,12 +69,21 @@ func WithCtx[I,O any](ctx context.Context) Option[I,O] {
 	}
 }
 
+func RedirectOutput[I, O any]() Option[I, O] {
+	return func(p *Pool[I, O]) {
+		p.out = make(chan Result[O], 1)
+	}
+}
+
 type Pool[I, O any] struct {
 	works          chan work[I, O]
 	workerTemplate Worker[I, O]
 	ctx            context.Context
-	cancel         context.CancelFunc
-	cancelWG       sync.WaitGroup
+
+	cancel   context.CancelFunc
+	cancelWG sync.WaitGroup
+
+	out chan Result[O]
 }
 
 func New[I, O any](workers int, opts ...Option[I, O]) *Pool[I, O] {
@@ -74,24 +113,42 @@ func (p *Pool[I, O]) Pub(input I) Result[O] {
 	var task Task[O] = func(ctx context.Context) (O, error) {
 		return p.workerTemplate(ctx, input)
 	}
+	if p.out != nil {
+		return Result[O]{}
+	}
 	return p.Run(task)
 }
 
 func (p *Pool[I, O]) Run(t Task[O]) Result[O] {
 	work := newWork[I](t)
 	p.works <- *work
+	if p.out != nil {
+		return Result[O]{}
+	}
 	return work.r
 }
 
 func (p *Pool[I, O]) Close() error {
-	select{
+	select {
 	case <-p.ctx.Done():
 		return nil
-	default:	
+	default:
 	}
 	p.cancel()
 	p.cancelWG.Wait()
+	close(p.out)
+
 	return nil
+}
+
+func (p *Pool[I, O]) Stream() <-chan Result[O] {
+	if p.out == nil {
+		mock := make(chan Result[O])
+		close(mock)
+		return mock
+	}
+
+	return p.out
 }
 
 func getZero[T any]() T {

@@ -37,6 +37,23 @@ for i := 0; i < 1_000; i++ {
 }
 ```
 
+### Use Pool Fun-In Fun-Out
+
+```go
+wp := New(3, RedirectOutput[int, int]())
+go func(){
+    for {
+        wp.Run(func(ctx context.Context) (int, error) {
+            return 1, nil
+        })
+    }
+}()
+
+for v := range wp.Stream() {
+   // get result as value stream
+}
+```
+
 ## License
 
 [See](LICENSE) 

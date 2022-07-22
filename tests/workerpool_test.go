@@ -67,3 +67,36 @@ func TestWorkerPoolCancel(t *testing.T) {
 	wp.Close()
 	wg.Wait()
 }
+
+func TestWorkerPoolRedirectOut(t *testing.T) {
+	wp := New(3, RedirectOutput[int, int]())
+	wp.Run(func(ctx context.Context) (int, error) {
+		return 1, nil
+	})
+	wp.Close()
+
+	var counter int
+	for v := range wp.Stream() {
+		val, err := v.Get()
+		assert.NoError(t, err)
+		assert.Equal(t, 1, val)
+		counter++
+	}
+	assert.Equal(t, 1, counter)
+}
+
+func TestWorkerPoolStreamWithoutRedirect(t *testing.T) {
+	wp := New[int, int](3)
+	v := <-wp.Stream()
+	_, err := v.Get()
+	assert.ErrorIs(t, err, ErrRedirectOut)
+}
+
+func TestWorkerPoolRedirectOutErrorFromResult(t *testing.T) {
+	wp := New(3, RedirectOutput[int, int]())
+	r := wp.Run(func(ctx context.Context) (int, error) {
+		return 1, nil
+	})
+	_, err := r.Get()
+	assert.ErrorIs(t, err, ErrRedirectOut)
+}
